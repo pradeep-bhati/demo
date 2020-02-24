@@ -26,30 +26,33 @@ public class Testontroller {
 		 
 	        Configuration conf = Configuration.builder().options(Option.AS_PATH_LIST).build();
 	        DocumentContext jsonContext = JsonPath.parse(str);  
-	        System.out.println("jsonpath Object:"+jsonContext.jsonString());
+//	        System.out.println("jsonpath Object:"+jsonContext.jsonString());
 	        List<String> pathList = JsonPath.using(conf).parse(str).read("$..reference");
 	        String response = null;
 	        for(String path : pathList) {
-	            String jsonpathCreatorName = jsonContext.read(path);
-            	response = getPractitionerData(jsonpathCreatorName);
+	            String resourceURI = jsonContext.read(path);
+            	response = getReferenceJson(resourceURI);
             	jsonContext.set(path,JsonPath.parse(response).json());
 	        }
 	        
 	        String finaljsonstring =(jsonContext.jsonString());
-	        System.out.println("printing json finally");
-	        System.out.println(finaljsonstring);
+//	        System.out.println("printing json finally");
+//	        System.out.println(finaljsonstring);
 	        return finaljsonstring;
 	    }
 	 
-	 public String getPractitionerData(String path)
+	 public String getReferenceJson(String resourceURI)
 	 {
+		 System.out.println(Thread.currentThread());
+		 long start = System.currentTimeMillis();
 		 RestTemplate restTemplate = new RestTemplate();
+		 long diff = System.currentTimeMillis() - start;
+		 System.out.println("time for:"+resourceURI+" :"+diff);
 		 String baseUri = "http://hapi.fhir.org/baseR4";
-		 String uri = baseUri +"/"+ path;
+		 String uri = baseUri +"/"+ resourceURI;
 		 ResponseEntity<String> response
 		  = restTemplate.getForEntity(uri , String.class);
-		 return response.getBody();
-		 
+		 return response.getBody();		 
 	 }
 }
 	 
