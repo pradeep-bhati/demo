@@ -7,7 +7,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import com.example.controller.Testontroller.RequestResponse;
+//import com.example.controller.Testontroller.RequestResponse;
 import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
 
@@ -15,7 +15,7 @@ import com.jayway.jsonpath.JsonPath;
 public class ReferenceService {
 	
 	 @Async("asyncExecutor")
-	 public CompletableFuture<RequestResponse>  getReferenceJson(String path,String json)
+	 public CompletableFuture<String>  getReferenceJson(String path,String json)
 	 {
 		 DocumentContext jsonContext = JsonPath.parse(json);  
 		 String resourceURI = jsonContext.read(path);
@@ -28,9 +28,10 @@ public class ReferenceService {
 		 String uri = baseUri +"/"+ resourceURI;
 		 ResponseEntity<String> response
 		  = restTemplate.getForEntity(uri , String.class);
-		 RequestResponse requestResponse = new RequestResponse();
-		 requestResponse.setPath(path);
-		 requestResponse.setResponse(response.getBody());
+//		 RequestResponse requestResponse = new RequestResponse();
+		 String requestResponse = null;
+//		 requestResponse.setPath(path);
+//		 requestResponse.setResponse(response.getBody());
 		 return CompletableFuture.completedFuture(requestResponse)  ;		 
 	 }
 
