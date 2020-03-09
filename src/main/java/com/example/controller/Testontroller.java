@@ -2,7 +2,9 @@ package com.example.controller;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.json.simple.JSONObject;
@@ -32,80 +34,90 @@ public class Testontroller {
 		 
 	        Configuration conf = Configuration.builder().options(Option.AS_PATH_LIST).build();
 	        DocumentContext jsonContext = JsonPath.parse(str);  
-	        List<String> pathList = new ArrayList<String>();
+	        JsonObject jsonObject = new JsonObject();
+	        JsonParser parser = new JsonParser();
+	        List<String> referencePathsInJson = new ArrayList<String>();
+	        String remoteResponse = null;
+//	        take out all the paths in json, having reference word.
 	        try {
-	        	pathList = JsonPath.using(conf).parse(str).read("$..reference");
+	        	referencePathsInJson = JsonPath.using(conf).parse(str).read("$..reference");
 	        }
 	        catch(PathNotFoundException pathNotFoundException) {
 	        	System.out.println("continue");
 	        }
-	        String response = null;
-	        JsonObject jsonObject = new JsonObject();
-	        jsonObject.addProperty("orignaljson",jsonContext.jsonString());
-	        if(pathList!=null) {
-	        for(String path : pathList) {
-	        	
+	        
+			JsonElement parsedOrignalJson = parser.parse(str);
+	        jsonObject.add("orignaljson",parsedOrignalJson);
+	        Map<String,Integer> keyMap = new HashMap<>();
+	        if(referencePathsInJson!=null) {
+	        for(String path : referencePathsInJson) {        	
 	            String resourceUri = jsonContext.read(path);
 	            String regex = ".*/.*";
 	            if(resourceUri.matches(regex)) {
-	            response = getReferenceJson(resourceUri);
-            	//String parsedResponse = JsonPath.parse(response).jsonString();
-            	System.out.println("parsed response"+response);
-	            ArrayList<String> keyList = filterJsonKey(path,resourceUri);
-	            populateJsonWithRefrences(keyList,jsonObject,response);
+	            	remoteResponse = getReferenceJson(resourceUri);          	
+	            	ArrayList<String> keyList = filterJsonKey(path,resourceUri);
+	            	populateJsonWithRefrences(keyList,jsonObject,remoteResponse,keyMap);
 	            }
 	        }
 	        }
 	        	        
-	        String preparedjson = jsonObject.toString();
-	        String responsejson = removeSpecialCharacters(preparedjson);     
-	        return responsejson;
+	        return jsonObject.toString();
 	    }
-	 
-	 public String removeSpecialCharacters(String preparedjson) {
-		 
-		 return
-		 preparedjson.replace("\\\"", "\"").replace("\"{","{").replace("}\"", "}").replace("\\\\\"", "\\\"")
-		 .replace("\\\\\\\"", "\\\"")
- 		.replace("\\\\n", "\\n")
- 		.replace("\\\\\\n", "\\n");
- 		
-	 }
-	 
-	 public JsonObject populateJsonWithRefrences(ArrayList<String> keyList,JsonObject jsonObject,String responseJson) {
+	  
+	 public JsonObject populateJsonWithRefrences(ArrayList<String> keyList,JsonObject jsonObject,String remoteResponse,
+			 Map<String,Integer> keyMap) {
 		 
 		 JsonParser parser = new JsonParser();
-		 JsonElement v1 = parser.parse(responseJson);
+		 JsonElement parsedRemoteResponse = parser.parse(remoteResponse);
 		 if(keyList.size()<2) {
-//     		keyList.stream().forEach(key -> jsonObject.addProperty(key, responseJson));
-			 keyList.stream().forEach(key -> jsonObject.add(key, v1));
+			 
+			 keyList.stream().forEach(key -> {
+				 if(keyMap.containsKey(key)) {
+					 
+					 Integer value = keyMap.get(key);
+					 if(value == 1) {
+						 JsonElement json = jsonObject.get(key);
+						 jsonObject.remove(key);
+						 String newkey1 = key + "_"+ value;
+						 jsonObject.add(newkey1, json);
+					 }
+					 value = value + 1;
+					 String newkey = key + "_"+ value;
+					 jsonObject.add(newkey, parsedRemoteResponse);
+					 keyMap.put(key, value);
+					 
+				 }
+				 else {
+					 jsonObject.add(key, parsedRemoteResponse);
+					 keyMap.put(key, 1);
+				 }				 
+			 });
      		System.out.println("json object with  patient"+jsonObject.toString());
      	}
      	else {
      		
-     			JsonObject childJson = new JsonObject();
-     			
-     			childJson.addProperty(keyList.get(0), responseJson);
-//     			String parseChildJson = childJson.toString();
-     			System.out.println("child json"+childJson.toString());
-     			
-     			
-     			String childJsonWithoutspecial = childJson.toString().replace("\\\"", "\"");
-     			System.out.println("child json after replacing"+childJsonWithoutspecial);
-     			if(jsonObject.has(keyList.get(1))) {
-     				JsonElement value = jsonObject.get(keyList.get(1));
-     				jsonObject.remove(keyList.get(1));
-     				String newkey1 = keyList.get(1) + "_1";
+     			JsonObject childJson = new JsonObject();	
+     			childJson.add(keyList.get(0), parsedRemoteResponse);
+     			if(keyMap.containsKey(keyList.get(1))) {
      				
-     				jsonObject.add(newkey1, value);
-     				String newkey2 = keyList.get(1) + "_2";
-     				jsonObject.addProperty(newkey2, childJsonWithoutspecial);
-     				
+     				Integer value = keyMap.get(keyList.get(1));
+     				if(value == 1) {
+     					JsonElement json = jsonObject.get(keyList.get(1));
+     					jsonObject.remove(keyList.get(1));
+     					String newkey1 = keyList.get(1)+"_"+value;
+     					jsonObject.add(newkey1, json);
+     					
+     				}
+     				value = value + 1;
+     				String newkey = keyList.get(1)+"_"+value;
+     				jsonObject.add(newkey,childJson);
+     				keyMap.put(keyList.get(1), value);
      			}
      			else {
-     			jsonObject.addProperty(keyList.get(1), childJsonWithoutspecial);	
+     				jsonObject.add(keyList.get(1),childJson);
+     				keyMap.put(keyList.get(1), 1);
      			}
-     			System.out.println("final json after replacing"+jsonObject.toString());
+
      	}
 		 return jsonObject;
 	 }
@@ -149,11 +161,7 @@ public class Testontroller {
 	 
 	 public String getReferenceJson(String resourceURI)
 	 {
-		 System.out.println(Thread.currentThread());
-		 long start = System.currentTimeMillis();
 		 RestTemplate restTemplate = new RestTemplate();
-		 long diff = System.currentTimeMillis() - start;
-		 System.out.println("time for:"+resourceURI+" :"+diff);
 		 String baseUri = "http://hapi.fhir.org/baseR4";
 		 String uri = baseUri +"/"+ resourceURI;
 		 ResponseEntity<String> response
