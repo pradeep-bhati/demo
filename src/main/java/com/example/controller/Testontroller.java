@@ -6,9 +6,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
 
+import com.example.service.ReferenceService;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -29,8 +34,11 @@ import com.jayway.jsonpath.PathNotFoundException;
 @RestController
 public class Testontroller {
 	
+	@Autowired
+	private ReferenceService referenceService;
+	
 	 @PostMapping("/myapp")
-	    public String homeInit(@RequestBody String str)  {
+	    public String homeInit(@RequestBody String str) throws InterruptedException, ExecutionException  {
 		 
 	        Configuration conf = Configuration.builder().options(Option.AS_PATH_LIST).build();
 	        DocumentContext jsonContext = JsonPath.parse(str);  
@@ -46,22 +54,48 @@ public class Testontroller {
 	        	System.out.println("continue");
 	        }
 	        
+//	        for(String abc : referencePathsInJson) {
+//	        	System.out.println("paths: "+abc);
+//	        }
+	        
 			JsonElement parsedOrignalJson = parser.parse(str);
 	        jsonObject.add("orignaljson",parsedOrignalJson);
 	        Map<String,Integer> keyMap = new HashMap<>();
+	        CompletableFuture<JsonObject> jsonFuture = null;
 	        if(referencePathsInJson!=null) {
-	        for(String path : referencePathsInJson) {        	
-	            String resourceUri = jsonContext.read(path);
-	            String regex = ".*/.*";
-	            if(resourceUri.matches(regex)) {
-	            	remoteResponse = getReferenceJson(resourceUri);          	
-	            	ArrayList<String> keyList = filterJsonKey(path,resourceUri);
-	            	populateJsonWithRefrences(keyList,jsonObject,remoteResponse,keyMap);
-	            }
-	        }
-	        }
+	        	List<CompletableFuture<RequestResponse>> requestResponseFutures =
+	        			referencePathsInJson.stream().map(path -> referenceService.getReferenceJson(path,str)).collect(Collectors.toList());
+	        	        CompletableFuture<Void> allFutures = CompletableFuture.allOf(
+	        	        		requestResponseFutures.toArray(new CompletableFuture[requestResponseFutures.size()])
+	        	        );
 	        	        
-	        return jsonObject.toString();
+	        	        CompletableFuture<List<RequestResponse>> allCompletableFuture = allFutures.thenApply(future -> {
+	        	            return requestResponseFutures.stream()
+	        	                    .map(completableFuture -> completableFuture.join())
+	        	                    .collect(Collectors.toList());
+	        	        });
+	        	        
+	        	         jsonFuture = allCompletableFuture.thenApply(requestResponseList ->
+	        	        {
+	        	        	for(RequestResponse requestResponse : requestResponseList) {
+	        	        	ArrayList<String> keyList = filterJsonKey(requestResponse.getPath(),jsonContext.read(requestResponse.getPath()));
+	        	        	populateJsonWithRefrences(keyList,jsonObject,requestResponse.getResponse(),keyMap);
+	        	        	}
+	        	        	return jsonObject;
+	        	        });
+//	        for(RequestResponse requestResponse : referencePathsInJson) {        	
+//	            String resourceUri = jsonContext.read(path);
+//	            String regex = ".*/.*";
+//	            if(resourceUri.matches(regex)) {
+//	            	remoteResponse = getReferenceJson(resourceUri);          	
+//            	ArrayList<String> keyList = filterJsonKey(path,resourceUri);
+//	            	populateJsonWithRefrences(keyList,jsonObject,remoteResponse,keyMap);
+//	            }
+//	        }
+	        }
+	        String finaljsonstring = jsonFuture.get().toString();
+	        	        
+	        return finaljsonstring;
 	    }
 	  
 	 public JsonObject populateJsonWithRefrences(ArrayList<String> keyList,JsonObject jsonObject,String remoteResponse,
@@ -92,7 +126,7 @@ public class Testontroller {
 					 keyMap.put(key, 1);
 				 }				 
 			 });
-     		System.out.println("json object with  patient"+jsonObject.toString());
+//     		System.out.println("json object with  patient"+jsonObject.toString());
      	}
      	else {
      		
@@ -132,7 +166,6 @@ public class Testontroller {
      	String str2 = str1.replace("'", "");
      	String str3= str2.replace("][", ":");
      	String[] strarray = str3.split(":");
-     	Arrays.asList(strarray).stream().forEach(m -> System.out.println("Array element:"+m));
      	ArrayList<String> nodeList = new ArrayList<String>();
      	Boolean notFound = true;
      	int i = strarray.length -2;
@@ -167,6 +200,24 @@ public class Testontroller {
 		 ResponseEntity<String> response
 		  = restTemplate.getForEntity(uri , String.class);
 		 return response.getBody();		 
+	 }
+	 
+	 public static class RequestResponse{
+			
+		 String path;
+		 public String getPath() {
+			return path;
+		}
+		public void setPath(String path) {
+			this.path = path;
+		}
+		public String getResponse() {
+			return response;
+		}
+		public void setResponse(String response) {
+			this.response = response;
+		}
+		String response;
 	 }
 }
 	 
